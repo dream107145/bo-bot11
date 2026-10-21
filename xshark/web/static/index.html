@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>xshark · paper console</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/xshark.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div class="brand-text">
+      <h1 id="brand-title">xshark · paper console</h1>
+      <p id="brand-sub">Polymarket 5m crypto · cross-market pairs · shared paper bankroll</p>
+    </div>
+  </div>
+
+  <div class="controls" role="group" aria-label="Console">
+    <div class="coin-switch" id="coin-switch" role="tablist" aria-label="Market" hidden></div>
+    <span class="badge" id="bot-badge" data-state="stopped">
+      <span class="dot" aria-hidden="true"></span><span id="bot-state">stopped</span>
+    </span>
+    <span class="badge mode-badge" id="mode-badge" title="Fills are simulated against the live books. No key, no orders.">PAPER</span>
+    <button id="ctrl-key" class="btn btn-ghost" type="button" title="Enter the write key (data/bot/console_key)">Key</button>
+    <button id="theme-toggle" class="btn btn-ghost" type="button" aria-label="Switch theme">
+      <span data-theme-label>Theme</span>
+    </button>
+  </div>
+</header>
+
+<!-- the write key: tuning and halting need data/bot/console_key -->
+<dialog id="dlg-key" class="card pw-dialog" aria-labelledby="key-title">
+  <form id="f-key" method="dialog">
+    <h3 id="key-title">Console write key</h3>
+    <p class="card-sub">Changing the bot needs the key in <code>/root/xshark/<span class="ddir">data/bot</span>/console_key</code> on the
+      server (<code>cat</code> it). It is kept in this browser only.</p>
+    <label class="ctl-field"><span>Key</span>
+      <input id="key-input" type="password" autocomplete="off" required></label>
+    <p class="pw-msg" id="key-msg"></p>
+    <div class="pw-actions">
+      <button class="btn" type="button" id="key-cancel">Cancel</button>
+      <button class="btn btn-primary" type="submit">Save key</button>
+    </div>
+  </form>
+</dialog>
+
+<nav class="tabs" id="tabs" role="tablist" aria-label="Sections">
+  <a class="tab" role="tab" href="#live"      data-page="live">Live</a>
+  <a class="tab" role="tab" href="#markets"   data-page="markets">7 markets</a>
+  <a class="tab" role="tab" href="#windows"   data-page="windows">Windows<span class="tab-count" id="tab-win-count"></span></a>
+  <a class="tab" role="tab" href="#fills"     data-page="fills">Fill quality</a>
+  <a class="tab" role="tab" href="#earnings"  data-page="earnings">Earnings</a>
+  <a class="tab" role="tab" href="#variables" data-page="variables">Bot variables</a>
+</nav>
+
+<main class="content">
+
+  <div id="notice" class="error-box" hidden role="alert"></div>
+
+  <!-- ═══════════════════════════════ live ═══════════════════════════════ -->
+  <section class="page" id="page-live" data-page="live">
+  <div id="idle" class="empty-state">
+    <h2>The bot is not running</h2>
+    <p>
+      Start it with pm2: <strong>pm2 start ecosystem.config.js --only xshark-paper</strong>
+      (or <code>.venv/bin/python -m xshark</code>). It connects to the Polymarket book feed, Chainlink
+      and three spot exchanges, warms its volatility estimate for about a minute, and trades the first
+      window whose open it saw.
+    </p>
+    <p class="empty-hint" id="idle-hint">Fills are simulated. This bot holds no key and sends no order.</p>
+  </div>
+
+  <div id="live-body" hidden>
+
+    <div class="top-layout">
+    <section class="hero-band" aria-label="Paper account">
+      <div class="hero">
+        <p class="hero-label" id="hero-label">Paper equity</p>
+        <p class="hero-figure" id="hero-equity">—</p>
+        <p class="hero-sub" id="hero-sub"></p>
+        <div class="restart-box" id="hero-restart" hidden>
+          <label for="hero-restart-cash">Halted. Restart with $</label>
+          <input id="hero-restart-cash" class="restart-cash" type="number" min="1" step="1" value="100">
+          <button id="hero-restart-btn" class="btn btn-sm btn-primary" type="button">Restart</button>
+          <span class="restart-msg" id="hero-restart-msg"></span>
+        </div>
+      </div>
+      <div class="kpi-row" id="kpi-row"></div>
+    </section>
+
+    <section class="card card-wide" id="market-card">
+      <div class="card-head">
+        <div>
+          <p class="eyebrow">This window</p>
+          <h3 id="window-title">—</h3>
+        <p class="card-sub" id="chart-sub">Live token prices, rule fills, and pair-trigger levels.</p>
+        </div>
+        <div class="card-actions"><span class="badge" id="window-clock">—</span></div>
+      </div>
+      <div class="chart-grid">
+        <div class="price-col price-col-wide">
+          <div class="price-col-head">
+            <h4>Up and Down: live book prices and pair buys</h4>
+            <div class="legend" id="price-legend"></div>
+          </div>
+          <div class="chart-host" id="price-chart"></div>
+        </div>
+        <div class="price-col price-col-wide">
+          <div class="price-col-head">
+            <h4><span class="coin-name">BTC</span> against the strike: why each order was sent</h4>
+            <div class="legend" id="spot-legend"></div>
+          </div>
+          <div class="chart-host chart-host-mid" id="spot-chart"></div>
+        </div>
+      </div>
+    </section>
+    </div>
+
+    <section class="card card-wide" id="next-card" hidden>
+      <div class="card-head">
+        <div>
+          <p class="eyebrow">Next window</p>
+          <h3 id="next-title">—</h3>
+          <p class="card-sub" id="next-sub"></p>
+        </div>
+        <div class="card-actions"><span class="badge" id="next-clock">—</span></div>
+      </div>
+      <div class="table-scroll"><table class="data-table" id="next-table"></table></div>
+      <div class="kpi-row kpi-row-tight" id="next-kpis"></div>
+    </section>
+
+    <div class="grid-2">
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Position</p>
+            <h3>What we hold this window</h3>
+            <p class="card-sub" id="pos-sub">Cross-market tokens are held to their market close; the strategy does not sell.</p>
+          </div>
+        </div>
+        <div class="table-scroll"><table class="data-table" id="pos-table"></table></div>
+        <div class="kpi-row kpi-row-tight" id="pos-kpis"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Discipline</p>
+            <h3>Cross-market pair strategy</h3>
+            <p class="card-sub">Buy one Up and one Down token from different markets when their projected cost at best ask + $0.02 limits, including fees, is below $0.80.</p>
+          </div>
+        </div>
+        <div class="trigger-ctl" id="trigger-ctl" hidden>
+          <label class="ctl-field"><span>Spot move to trigger a clip</span>
+            <input id="trig-sigma" type="number" min="0" max="6" step="0.1" aria-label="Move size in sigma"></label>
+          <span class="trig-unit">σ within</span>
+          <label class="ctl-field"><span>Window</span>
+            <input id="trig-ms" type="number" min="100" max="5000" step="50" aria-label="Move window in ms"></label>
+          <span class="trig-unit">ms</span>
+          <button id="trig-apply" class="btn btn-primary btn-sm" type="button">Apply</button>
+          <span class="trig-now" id="trig-now">—</span>
+        </div>
+        <p class="ctrl-status" id="trig-status"></p>
+        <div class="table-scroll"><table class="data-table" id="legs-table"></table></div>
+        <div class="table-scroll"><table class="data-table" id="orders-table"></table></div>
+      </section>
+    </div>
+
+    <section class="card card-wide">
+      <div class="card-head">
+        <div>
+          <p class="eyebrow">Ledger · this window</p>
+          <h3>Fills</h3>
+          <p class="card-sub" id="fills-sub">Every simulated pair fill, including its execution price and fees.</p>
+        </div>
+      </div>
+      <div class="table-scroll"><table class="data-table" id="fills-table"></table></div>
+    </section>
+
+    <div class="grid-2">
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Settling</p>
+            <h3>Closed windows awaiting the result</h3>
+            <p class="card-sub">Settled from the venue's own outcome ~40 s after the close.</p>
+          </div>
+        </div>
+        <div class="table-scroll"><table class="data-table" id="pending-table"></table></div>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Inputs</p>
+            <h3>Feeds</h3>
+            <p class="card-sub">Spot composite, the settlement price and the book channel.</p>
+          </div>
+        </div>
+        <div class="table-scroll"><table class="data-table" id="feeds-table"></table></div>
+      </section>
+    </div>
+
+  </div>
+  </section>
+
+  <!-- ═══════════════════════════════ all markets ═══════════════════════════════ -->
+  <section class="page" id="page-markets" data-page="markets" hidden>
+    <section class="card card-wide">
+      <div class="card-head">
+        <div>
+          <p class="eyebrow">Polymarket · 5 minute · live books</p>
+          <h3>All six Up/Down markets</h3>
+          <p class="card-sub">Current Up and Down prices, pair buys and fills. Read-only overview; clocks use GMT+9.</p>
+        </div>
+        <div class="card-actions"><span class="badge" id="markets-updated">Waiting for feeds</span></div>
+      </div>
+    </section>
+    <div class="market-grid" id="market-grid" aria-live="polite"></div>
+  </section>
+
+  <!-- ═══════════════════════════════ windows ═══════════════════════════════ -->
+  <section class="page" id="page-windows" data-page="windows" hidden>
+  <section class="card card-wide">
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">On disk &middot; <span class="ddir">data/bot</span>/windows.jsonl</p>
+        <h3>Settled windows</h3>
+        <p class="card-sub">One row per 5-minute window, settled on the venue's own result. Maker rebates are an estimate and are never in the PnL.</p>
+      </div>
+    </div>
+    <div class="kpi-row" id="win-kpis"></div>
+    <div class="chart-top"><div class="legend" id="win-legend"></div></div>
+    <div class="chart-host" id="win-chart"></div>
+  </section>
+
+  <section class="card card-wide">
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">Benchmark</p>
+        <h3>Us against the trader we copy</h3>
+        <p class="card-sub" id="bench-sub">x-MoneyForWhiskas, BTC 5m, from its full activity log.</p>
+      </div>
+    </div>
+    <div class="table-scroll"><table class="data-table" id="bench-table"></table></div>
+  </section>
+
+  <section class="card card-wide">
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">Every window</p>
+        <h3>Window ledger</h3>
+        <p class="card-sub">Click a row for its price path, bids and fills.</p>
+      </div>
+    </div>
+    <div class="table-scroll"><table class="data-table" id="win-table"></table></div>
+    <div class="pager" id="win-pager"></div>
+  </section>
+
+  <section class="card card-wide" id="win-detail" hidden aria-live="polite">
+    <div class="card-head">
+      <div>
+        <p class="eyebrow" id="wd-eyebrow">Window</p>
+        <h3 id="wd-title">—</h3>
+        <p class="card-sub" id="wd-sub"></p>
+      </div>
+      <div class="card-actions">
+        <a class="btn btn-ghost btn-sm" id="wd-json" href="#" download>Download JSON</a>
+        <button class="btn btn-sm" id="wd-close" type="button">Close</button>
+      </div>
+    </div>
+    <div class="kpi-row" id="wd-kpis"></div>
+    <div class="legend" id="wd-legend"></div>
+    <div class="chart-host" id="wd-chart"></div>
+    <div class="price-col-head"><h4><span class="coin-name">BTC</span> against the strike: why each order was sent</h4>
+      <div class="legend" id="wd-spot-legend"></div></div>
+    <div class="chart-host chart-host-mid" id="wd-spot-chart"></div>
+    <div class="table-scroll"><table class="data-table" id="wd-fills"></table></div>
+    <p class="card-foot" id="wd-foot"></p>
+  </section>
+  </section>
+
+  <!-- ═══════════════════════════════ fill quality ═══════════════════════════════ -->
+  <section class="page" id="page-fills" data-page="fills" hidden>
+  <section class="card card-wide">
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">On disk &middot; <span class="ddir">data/bot</span>/fills.jsonl</p>
+        <h3>Fill quality by leg</h3>
+        <p class="card-sub">
+          Does each leg buy below what the share turns out to be worth? Markout = the side's book mid
+          1 s / 5 s / 30 s later minus the price paid (in cents a share); positive is good for us.
+          The trader's resting bids won +1.2 points over their price; a resting bid that only fills when the
+          ask falls through it shows up here as a negative markout.
+        </p>
+      </div>
+    </div>
+    <div class="kpi-row" id="fq-kpis"></div>
+    <div class="table-scroll"><table class="data-table" id="fq-table"></table></div>
+    <div class="chart-top"><div class="legend" id="fq-legend"></div></div>
+    <div class="chart-host chart-host-short" id="fq-chart"></div>
+    <p class="card-foot" id="fq-cal"></p>
+  </section>
+
+  <section class="card card-wide">
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">Every 5-minute window · all 7 markets</p>
+        <h3>Overall profit / loss per window</h3>
+        <p class="card-sub" id="pw-sub">Combined settled PnL across BTC, ETH, SOL, XRP, DOGE and BNB.</p>
+      </div>
+      <div class="card-actions">
+        <div class="seg" id="pw-range" role="group" aria-label="Range">
+          <button class="seg-btn" type="button" data-n="24">2 h</button>
+          <button class="seg-btn is-on" type="button" data-n="96">8 h</button>
+          <button class="seg-btn" type="button" data-n="288">24 h</button>
+        </div>
+      </div>
+    </div>
+    <div class="kpi-row" id="pw-kpis"></div>
+    <div class="chart-top"><div class="legend" id="pw-legend"></div></div>
+    <div class="chart-host" id="pw-chart"></div>
+    <details class="table-fold">
+      <summary>Table view</summary>
+      <div class="table-scroll"><table class="data-table" id="pw-table"></table></div>
+    </details>
+  </section>
+
+  <section class="card card-wide">
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">Latest first</p>
+        <h3>Settled fills</h3>
+        <p class="card-sub" id="fr-sub"></p>
+      </div>
+    </div>
+    <div class="table-scroll"><table class="data-table" id="fr-table"></table></div>
+  </section>
+  </section>
+
+  <!-- ═══════════════════════════════ earnings ═══════════════════════════════ -->
+  <section class="page" id="page-earnings" data-page="earnings" hidden>
+  <section class="card card-wide" id="earnings-card">
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">On disk &middot; never reset</p>
+        <h3>Earnings</h3>
+        <p class="card-sub">Settled paper PnL per calendar period, GMT+9. The estimated maker rebate is shown beside it, never added in.</p>
+      </div>
+      <div class="card-actions">
+        <div class="seg" id="earn-period" role="group" aria-label="Period">
+          <button class="seg-btn is-on" type="button" data-period="day">Daily</button>
+          <button class="seg-btn" type="button" data-period="week">Weekly</button>
+          <button class="seg-btn" type="button" data-period="month">Monthly</button>
+        </div>
+      </div>
+    </div>
+    <div class="kpi-row" id="earnings-kpis"></div>
+    <div class="chart-top"><div class="legend" id="earnings-legend"></div></div>
+    <div class="chart-host" id="earnings-chart"></div>
+    <details class="table-fold">
+      <summary>Table view</summary>
+      <div class="table-scroll"><table class="data-table" id="earnings-table"></table></div>
+    </details>
+  </section>
+  </section>
+
+  <!-- ═══════════════════════════════ tuning ═══════════════════════════════ -->
+  <section class="page" id="page-variables" data-page="variables" hidden>
+  <section class="card card-wide" id="controls-card">
+    <div class="card-head">
+      <div>
+        <p class="eyebrow">Tuning &middot; applies without a restart</p>
+        <h3>Bot variables</h3>
+        <p class="card-sub">
+          Saved to <span class="ddir">data/bot</span>/controls.json; the bot re-reads it within about two seconds and reports what it
+          applied. Values are clamped to safe ranges. An empty field means "no override".
+        </p>
+      </div>
+      <div class="card-actions">
+        <span class="restart-box" id="ctrl-restart-wrap" hidden>
+          <label for="ctrl-restart-cash">Restart with $</label>
+          <input id="ctrl-restart-cash" class="restart-cash" type="number" min="1" step="1" value="100">
+          <button id="ctrl-restart" class="btn btn-primary" type="button" title="Archive this run and start the paper bot again with this cash">Restart</button>
+        </span>
+        <button id="ctrl-loss-reset" class="btn" type="button" title="Start today's loss count from zero">Reset today's loss</button>
+        <button id="ctrl-kill" class="btn btn-danger" type="button" aria-pressed="false">Halt orders</button>
+      </div>
+    </div>
+    <div id="ctrl-groups" class="ctrl-groups"></div>
+    <div class="ctrl-foot">
+      <button id="ctrl-apply" class="btn btn-primary" type="button" disabled>Apply changes</button>
+      <button id="ctrl-revert" class="btn" type="button" disabled>Discard edits</button>
+      <button id="ctrl-reset" class="btn btn-ghost" type="button">Clear overrides</button>
+      <span class="ctrl-status" id="ctrl-status"></span>
+    </div>
+    <p class="card-foot" id="ctrl-foot"></p>
+  </section>
+  </section>
+
+</main>
+
+<div id="tooltip" class="tooltip" hidden role="status" aria-live="polite"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# Local credentials and runtime state
+.env
+.env.*
+data/
+logs/
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/

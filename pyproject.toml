@@ -1,0 +1,14 @@
+[project]
+name = "xshark"
+version = "0.1.0"
+description = "Paper bot for Polymarket BTC 5-minute Up/Down markets, modelled on the trader x-MoneyForWhiskas, with a console in Bo-BOTT's UI"
+requires-python = ">=3.11"
+# pinned to the versions troll-poly-bot's live feeds run on
+dependencies = ["websockets==15.0.1", "orjson==3.12.0"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
